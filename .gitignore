@@ -1,3 +1,9 @@
+build.sh
+host.py
+input.txt
+random_player.py
+read.py
+write.py
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
