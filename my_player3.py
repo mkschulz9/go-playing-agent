@@ -1,4 +1,4 @@
-import math
+import math, random
 
 class MonteCarloTreeSearch:
     class _BoardNode:
@@ -8,6 +8,8 @@ class MonteCarloTreeSearch:
             self.identifier = str(board)
             self.parent = parent
             self.children = []
+            self.num_children_expanded = 0
+            self.is_explored = False
             self.simulation_visits = 0
             self.winning_simulation_visits = 0
             
@@ -28,14 +30,22 @@ class MonteCarloTreeSearch:
         next_player = 3 - current_node.player
 
         for board in possible_next_boards:
-            child_node = self._BoardNode(board, next_player, parent=current_node)
+            child_node = self._BoardNode(next_player, board, parent=current_node)
             current_node.children.append(child_node)
-    
-        return current_node.board
+
+        return current_node
     
     # expands leaf node
-    def expansion(self):
-        pass
+    def expansion(self, leaf_node):
+        if leaf_node.num_children_expanded == len(leaf_node.children) or self._is_terminal_state(leaf_node):
+            return None
+        
+        unexplored_children = [child for child in leaf_node.children if not child.is_explored]
+        next_child = random.choice(unexplored_children)
+        next_child.is_explored = True
+        leaf_node.num_children_expanded += 1
+        
+        return next_child
     
     # simulates game from leaf node
     def simulation(self):
@@ -161,14 +171,29 @@ class MonteCarloTreeSearch:
         
         uct_value = (w_i / n_i) + C * (math.sqrt(math.log(N_i) / n_i))
         return uct_value
+    
+    # checks if a board state is a terminal state
+    def _is_terminal_state(self, node):
+        # Check for completely filled board
+        if all(all(cell != 0 for cell in row) for row in node.board):
+            return True
+
+        # Note: Checking for consecutive passes might need tracking of game history.
+        
+        return False
 
 if __name__ == "__main__":
     agent_MCTS = MonteCarloTreeSearch("./input.txt")
     player, current_board, previous_board = agent_MCTS.readInput()
     print(f"Player: {player}\nBoard after agent's move:\n{previous_board}\nBoard after opponent's move:\n{current_board}\n")
     
-    selected_board = agent_MCTS.selection(player, current_board, previous_board)
-    for row in selected_board:
+    leaf_node = agent_MCTS.selection(player, current_board, previous_board)
+    print("Leaf node board:\n")
+    for row in leaf_node.board: 
         print(row)
-    print("\n")
-    
+    child_node = agent_MCTS.expansion(leaf_node)
+    #print details about the child node
+    print("Child node board:\n")
+    for row in child_node.board: 
+        print(row)
+    print(f"parent node: {child_node.parent.identifier}\nplayer: {child_node.player}\nboard:{child_node.board}\n")
