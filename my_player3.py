@@ -2,13 +2,12 @@ import math, random
 
 class MonteCarloTreeSearch:
     class _Node:
-        def __init__(self, player, board, parent, is_root=False):
+        def __init__(self, player, board, previous_board=None, parent=None):
             self.player = player
             self.board = board
+            self.previous_board = previous_board
             self.parent = parent
             self.children = []
-            self.num_children_simulated = 0
-            self.is_root = is_root
             self.simulated = False
             self.simulation_visits = 0
             self.winning_simulation_visits = 0
@@ -19,48 +18,71 @@ class MonteCarloTreeSearch:
         
     # sets the root node for the MCTS tree
     def set_root_node(self, player, current_board, previous_board):
-        self._root_node = self._Node(player, current_board, previous_board, is_root=True)
+        self._root_node = self._Node(player, current_board, previous_board)
     
     # selects a leaf node to expand (a node without children in the MCTS tree)
     # input: self
     # output: leaf node
     def selection(self):
         current_node = self._root_node
-    
         while current_node.children:
             uct_values = [self._UCT(child) for child in current_node.children]
             current_node = current_node.children[uct_values.index(max(uct_values))]
             
-        if current_node.is_root:
-            possible_next_boards = self._generate_valid_boards(current_node.player, current_node.board, current_node.parent)
-        else:
-            possible_next_boards = self._generate_valid_boards(current_node.player, current_node.board, current_node.parent.board)
-        next_player = 3 - current_node.player
-
-        for board in possible_next_boards:
-            child_node = self._Node(next_player, board, current_node)
-            current_node.children.append(child_node)
-
         return current_node
     
     # expands leaf node
     # input: self, leaf node chosen during selection
     # output: next child node to start simulation from
     def expansion(self, leaf_node):
-        if leaf_node.num_children_simulated == len(leaf_node.children) or self._is_terminal_state(leaf_node):
-            return None
-        
-        unsimulated_children = [child for child in leaf_node.children if not child.simulated]
-        chosen_child = random.choice(unsimulated_children)
-        chosen_child.simulated = True
-        leaf_node.num_children_simulated += 1
-        
-        return chosen_child
+        if not leaf_node.children:
+            possible_next_boards = self._generate_valid_boards(leaf_node.player, leaf_node.board, leaf_node.previous_board)
+            next_player = 3 - leaf_node.player
+            for board in possible_next_boards:
+                child_node = self._Node(next_player, board, leaf_node.board, leaf_node)
+                leaf_node.children.append(child_node)
+        if leaf_node.children:
+            unsimulated_children = [child for child in leaf_node.children if not child.simulated]
+            if unsimulated_children:
+                chosen_child = random.choice(unsimulated_children)
+                chosen_child.simulated = True
+                return chosen_child
+        return None
     
-    # simulates game from leaf node
-    def simulation(self):
-        pass
-    
+    # simulates game randomly from the given node
+    # input: self, node to start simulation from
+    # output: node at the end of the simulation
+    def simulation(self, starting_node):
+        current_node = starting_node
+        
+        while True:
+            possible_next_boards = self._generate_valid_boards(current_node.player, current_node.board, current_node.previous_board)
+            if not possible_next_boards:
+                return current_node
+            
+            next_board = random.choice(possible_next_boards)
+            
+            # Determine the move played
+            #move_played = self.position_played(current_node.player, next_board, current_node.board)
+            #if move_played:
+                #print(f"\nPlayer {current_node.player} played move at {move_played}. Board:")
+                #for row in next_board:
+                    #print(row)
+           
+            next_player = 3 - current_node.player
+            
+            new_child = self._Node(next_player, next_board, current_node.board, current_node)
+            current_node.children.append(new_child)
+            current_node = new_child
+                
+    # returns the position played by the player       
+    def position_played(self, player, current_board, previous_board):
+        for row in range(5):  # assuming the board is of size 5x5
+            for col in range(5):
+                if current_board[row][col] == player and previous_board[row][col] != player:
+                    return (row, col)
+        return None  # if no position was found (this shouldn't happen if the game is played correctly)
+
     # backpropagates result of simulation, updating each node on path
     def backpropagation(self):
         pass
@@ -92,7 +114,7 @@ class MonteCarloTreeSearch:
                     self._place_stone_capture(player, potential_board, row, col)
                     
                     # check if move is not a suicide and not a ko violation
-                    if not self._count_liberties(player, potential_board, row, col) == 0 and not self._is_ko_violation(potential_board, previous_board):
+                    if not self._count_liberties(player, potential_board, row, col) == 0 and not potential_board == previous_board:
                         valid_boards.append(potential_board)
         
         return valid_boards
@@ -107,16 +129,6 @@ class MonteCarloTreeSearch:
         for neighbor_row, neighbor_col in self._get_neighbors(row, col):
             if board[neighbor_row][neighbor_col] == opponent and self._count_liberties(opponent, board, neighbor_row, neighbor_col) == 0:
                 self._capture_group(opponent, board, neighbor_row, neighbor_col)
-
-    # checks if making a move results in a board state that's identical to the previous state, which would be a KO violation
-    # input: self, potential board layout, previous board layout
-    # output: true if a move is a KO volation, false if not
-    def _is_ko_violation(self, potential_board, previous_board):
-        for row in range(5):
-            for col in range(5):
-                if potential_board[row][col] != previous_board[row][col]:
-                    return False
-        return True
 
     # counts the number of liberties (empty adjacent cells) for the stone/group starting from the given cell
     # input: self, player number, board layout, row & column of cell
@@ -181,16 +193,6 @@ class MonteCarloTreeSearch:
         
         uct_value = (w_i / n_i) + C * (math.sqrt(math.log(N_i) / n_i))
         return uct_value
-    
-    # checks if a board state is a terminal state
-    def _is_terminal_state(self, node):
-        # Check for completely filled board
-        if all(all(cell != 0 for cell in row) for row in node.board):
-            return True
-
-        # Note: Checking for consecutive passes might need tracking of game history.
-        
-        return False
 
 if __name__ == "__main__":
     #instantiate MCTS agent
@@ -201,7 +203,7 @@ if __name__ == "__main__":
     print(f"Player: {player}\nBoard after agent's move:")
     for row in previous_board:
         print(row)
-    print("Board after opponent's move:")
+    print("\nBoard after opponent's move:")
     for row in current_board:
         print(row)
     
@@ -211,11 +213,11 @@ if __name__ == "__main__":
     # for i in range(20):
     leaf_node = agent_MCTS.selection()
     child_node = agent_MCTS.expansion(leaf_node)
-
-    print("\nLeaf node's board:")
-    for row in leaf_node.board:
-        print(row)
-    
-    print("\nChild node's board:")
-    for row in child_node.board:
-        print(row)
+    #print("\nStarting node's board for simulation:")
+    #for row in child_node.board:
+        #print(row)
+        
+    ending_node = agent_MCTS.simulation(child_node)
+    #print("\nEnding node's board after simulation:")
+    #for row in ending_node.board:
+        #print(row)
