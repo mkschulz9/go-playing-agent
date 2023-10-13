@@ -4,6 +4,7 @@ input.txt
 random_player.py
 read.py
 write.py
+output.txt
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]

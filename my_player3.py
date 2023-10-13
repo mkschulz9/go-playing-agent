@@ -1,4 +1,4 @@
-import math, random
+import math, random, time
 
 class MonteCarloTreeSearch:
     class _Node:
@@ -36,6 +36,12 @@ class MonteCarloTreeSearch:
 
         return player, current_board, previous_board
     
+    # writes output to file on first file in format: 'row,column'
+    def writeOutput(self, move_played):
+        with open('output.txt', 'w') as file:
+            file.write(f"{move_played[0]},{move_played[1]}")
+            file.close()
+    
     # selects a leaf node to expand (a node without children in the MCTS tree)
     # input: self
     # output: leaf node
@@ -57,12 +63,12 @@ class MonteCarloTreeSearch:
             for board in possible_next_boards:
                 child_node = self._Node(next_player, board, leaf_node.board, leaf_node)
                 leaf_node.children.append(child_node)
-        if leaf_node.children:
-            unsimulated_children = [child for child in leaf_node.children if not child.simulated]
-            if unsimulated_children:
-                chosen_child = random.choice(unsimulated_children)
-                chosen_child.simulated = True
-                return chosen_child
+                
+        unsimulated_children = [child for child in leaf_node.children if not child.simulated]
+        if unsimulated_children:
+            chosen_child = random.choice(unsimulated_children)
+            chosen_child.simulated = True
+            return chosen_child
         return None
     
     # simulates game randomly from the given node
@@ -149,8 +155,9 @@ class MonteCarloTreeSearch:
     def _generate_valid_boards(self, player, current_board, previous_board):
         valid_boards = []
 
-        for row in range(5):
-            for col in range(5):
+        positions = [(row, col) for row in range(5) for col in range(5)]
+        random.shuffle(positions)
+        for row, col in positions:
                 if current_board[row][col] == 0:
                     potential_board = [row.copy() for row in current_board]
                     self._place_stone_capture(player, potential_board, row, col)
@@ -236,24 +243,38 @@ class MonteCarloTreeSearch:
         uct_value = (w_i / n_i) + C * (math.sqrt(math.log(N_i) / n_i))
         return uct_value
 
-if __name__ == "__main__":
+def main():
     #instantiate MCTS agent
     agent_MCTS = MonteCarloTreeSearch("./input.txt")
-    
     # read and print input
     player, current_board, previous_board = agent_MCTS.readInput()
-    print(f"Agent Player: {player}\nBoard after agent's move:")
-    for row in previous_board:
-        print(row)
-    print("\nBoard after opponent's move:")
-    for row in current_board:
-        print(row)
-    
     # set root node for MCTS tree
     agent_MCTS.set_root_node(player, current_board, previous_board)
     
-    # for i in range(20):
-    leaf_node = agent_MCTS.selection()
-    child_node = agent_MCTS.expansion(leaf_node)
-    ending_node, root_player_won = agent_MCTS.simulation(child_node)
-    agent_MCTS.backpropagation(ending_node, root_player_won)
+    # run MCTS for 10 seconds
+    end_time = time.time() + 10
+    while time.time() < end_time:
+        leaf_node = agent_MCTS.selection()
+        child_node = agent_MCTS.expansion(leaf_node)
+        
+        if child_node is None:
+            root_player_won = agent_MCTS._has_root_player_won(ending_node.board)
+            agent_MCTS.backpropagation(leaf_node, root_player_won)
+            continue
+        
+        ending_node, root_player_won = agent_MCTS.simulation(child_node)  
+        agent_MCTS.backpropagation(ending_node, root_player_won)
+    
+    # find child of root with highest number of visits
+    child = max(agent_MCTS._root_node.children, key=lambda child: child.winning_simulation_visits)
+    # find position played by root player to move to child
+    move_played = agent_MCTS._position_played(player, child.board, current_board)
+    # write output to file
+    agent_MCTS.writeOutput(move_played)
+    
+if __name__ == "__main__":
+    main()
+
+# improving the MCTS agent
+# 1. use a better way to play out game during simulation
+# 2. Choose move based on highest win rate instead of highest number of visits or some other metric
