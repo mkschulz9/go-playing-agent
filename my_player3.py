@@ -80,7 +80,7 @@ class MonteCarloTreeSearch:
             next_board = random.choice(possible_next_boards)
             
             # Determine the move played
-            #move_played = self.position_played(current_node.player, next_board, current_node.board)
+            #move_played = self._position_played(current_node.player, next_board, current_node.board)
             #if move_played:
                 #print(f"\nPlayer {current_node.player} played move at {move_played}. Board:")
                 #for row in next_board:
@@ -91,18 +91,27 @@ class MonteCarloTreeSearch:
             new_child = self._Node(next_player, next_board, current_node.board, current_node)
             current_node.children.append(new_child)
             current_node = new_child
-                
-    # returns the position played by the player       
-    def position_played(self, player, current_board, previous_board):
-        for row in range(5):  # assuming the board is of size 5x5
-            for col in range(5):
-                if current_board[row][col] == player and previous_board[row][col] != player:
-                    return (row, col)
-        return None  # if no position was found (this shouldn't happen if the game is played correctly)
 
     # backpropagates result of simulation, updating each node on path
-    def backpropagation(self):
-        pass
+    # input: self, node at end of simulation, boolean indicating if root player won
+    # output: none (modifies nodes attributes in winning path)
+    def backpropagation(self, ending_node, root_player_won):
+        current_node = ending_node
+        if root_player_won:
+            player_won = self._root_node.player
+            player_lost = 3 - player_won
+        else:
+            player_lost = self._root_node.player
+            player_won = 3 - player_lost
+            
+        while not current_node.parent:
+            current_node.simulation_visits += 1
+            if current_node.player == player_won:
+                current_node.winning_simulation_visits += 1
+            current_node = current_node.parent
+        
+        return
+            
     
     # determines if the root player has won the game
     # input self, board layout at end of game
@@ -123,6 +132,16 @@ class MonteCarloTreeSearch:
             opponent_score = player1_score
         
         return root_score > opponent_score
+    
+    # returns the position played by the player
+    # input: self, player number, current board layout, previous board layout
+    # output: position played by the player    
+    def _position_played(self, player, current_board, previous_board):
+        for row in range(5):  # assuming the board is of size 5x5
+            for col in range(5):
+                if current_board[row][col] == player and previous_board[row][col] != player:
+                    return (row, col)
+        return None  # if no position was found (this shouldn't happen if the game is played correctly)
         
     # generates all valid boards that can be reached from the given board by the given player
     # input: self, player, current board layout, previous board layout
@@ -237,3 +256,4 @@ if __name__ == "__main__":
     leaf_node = agent_MCTS.selection()
     child_node = agent_MCTS.expansion(leaf_node)
     ending_node, root_player_won = agent_MCTS.simulation(child_node)
+    agent_MCTS.backpropagation(ending_node, root_player_won)
