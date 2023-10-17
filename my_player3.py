@@ -2,13 +2,14 @@ import math, random, time
 
 class MonteCarloTreeSearch:
     class _Node:
-        def __init__(self, player, board, previous_board=None, parent_node=None):
+        def __init__(self, player, board, previous_board=None, parent_node=None, simulated = False):
             self.player = player
             self.board = board
             self.previous_board = previous_board
             self.parent_node = parent_node
             self.children = []
             self.value = 0
+            self.simulated = simulated
             self.simulation_visits = 0
             self.winning_simulation_visits = 0
             
@@ -25,7 +26,7 @@ class MonteCarloTreeSearch:
     def selection(self):
         current_node = self._root_node
         
-        while current_node.children != []:
+        while current_node.children != [] and not current_node.simulated:
             #print(f"Current node's simulation visits: {current_node.simulation_visits}")
             log_parent_visits = math.log(current_node.simulation_visits) if current_node.simulation_visits else 1.0
             current_node = max(current_node.children, key=lambda child: self._UCT(child, log_parent_visits))
@@ -39,6 +40,7 @@ class MonteCarloTreeSearch:
         if leaf_node.simulation_visits == 0:
             return leaf_node
         
+        leaf_node.simulated = False
         possible_next_boards = self._generate_valid_boards(leaf_node.player, leaf_node.board, leaf_node.previous_board)
         next_player = 3 - leaf_node.player
         
@@ -56,6 +58,8 @@ class MonteCarloTreeSearch:
     # output: node at the end of the simulation
     def simulation(self, starting_node):
         current_node = starting_node
+        starting_node.simulated = True
+        
         
         while True:
             valid_boards = self._generate_valid_boards(current_node.player, current_node.board, current_node.previous_board)
@@ -74,7 +78,7 @@ class MonteCarloTreeSearch:
     # input: node at end of simulation, boolean indicating if root player won
     # output: none (modifies nodes attributes in winning path)
     def backpropagation(self, ending_node, root_player_won):
-        value = self._evaluate_terminal_board(ending_node.board)
+        value = self._evaluate_terminal_board(ending_node)
         current_node = ending_node
         
         if root_player_won:
@@ -124,22 +128,26 @@ class MonteCarloTreeSearch:
     # scores the given terminal board for the root player based on the number of stones and eyes of root player
     # input: board layout
     # output: score of board for root player
-    def _evaluate_terminal_board(self, board):
+    def _evaluate_terminal_board(self, ending_node):
+        # Notes: multiplying # stones by 5; multiplying eyes by 2; and multiplying opp suicides by 10 produced good result on Vocareum;
+        # I think number of stones on the board is the best way to guage value of the board
         score = 0
         root_player = self._root_node.player
         opponent = 3 - root_player
         komi_value = 2.5
 
-        root_player_stones = sum(row.count(root_player) for row in board)
-        opponent_stones = sum(row.count(opponent) for row in board)
+        root_player_stones = sum(row.count(root_player) for row in ending_node.board)
+        opponent_stones = sum(row.count(opponent) for row in ending_node.board)
 
         if root_player == 1:
             score += root_player_stones - opponent_stones - komi_value
         else:
             score += root_player_stones + komi_value - opponent_stones
-        score += self._count_eyes(board, root_player)
-        opponent_suicides = self._count_potential_suicides(board, opponent)
-        score += opponent_suicides * 5
+            
+        score *= 5
+        score += self._count_eyes(ending_node.board, root_player) * 2
+        opponent_suicides = self._count_potential_suicides(ending_node.board, opponent)
+        score += opponent_suicides * 10
 
         return score
 
@@ -209,7 +217,7 @@ class MonteCarloTreeSearch:
     # output: valid boards that can be reached
     def _generate_valid_boards(self, player, current_board, previous_board):
         valid_boards = []
-        captured_stones = []  # To keep track of captured stones for each move
+        captured_stones = []
 
         positions = [(row, col) for row in range(5) for col in range(5)]
         for row, col in positions:
@@ -219,9 +227,8 @@ class MonteCarloTreeSearch:
                 if not self._count_liberties(player, current_board, row, col) == 0 and not current_board == previous_board:
                     valid_boards.append([row.copy() for row in current_board])
                 
-                # Undo the move to restore the board to its original state
                 self._undo_move(player, current_board, row, col, captured_stones)
-                captured_stones.clear()  # Clear the list of captured stones for the next move
+                captured_stones.clear()
 
         return valid_boards
 
@@ -236,7 +243,9 @@ class MonteCarloTreeSearch:
         for neighbor_row, neighbor_col in self._get_neighbors(row, col):
             if board[neighbor_row][neighbor_col] == opponent and self._count_liberties(opponent, board, neighbor_row, neighbor_col) == 0:
                 self._capture_group(opponent, board, neighbor_row, neighbor_col, captured_stones)
-
+        
+        return len(captured_stones)
+    
     # undoes a move by the given player and restores the board to its original state
     # input: player to undo move for, board to undo move on, row & column to undo move, list of captured stones to restore
     # output: none (modifies the board variable in-place)
@@ -276,7 +285,7 @@ class MonteCarloTreeSearch:
         while to_capture:
             current_row, current_col = to_capture.pop()
             board[current_row][current_col] = 0
-            captured_stones.append((current_row, current_col))  # Keep track of the captured stones
+            captured_stones.append((current_row, current_col))
             visited.add((current_row, current_col))
 
             for neighbor_row, neighbor_col in self._get_neighbors(current_row, current_col):
@@ -345,6 +354,10 @@ if __name__ == "__main__":
 # value by the value found at the terminal node
 # - in the beginning and ending stages of the game, investigate if there are best-known moves to make
 # - when playing as Black, I might need to be more aggressive ast capturing stones
-# Also, I think the number of opponent pieces captured during a rollout can be beneficial, how can I implement this in my code?
+# - Also, I think the number of opponent pieces captured during a rollout can be beneficial, how can I implement this in my code?
+# - eval function using first two metrics seemed to work best (excluding opp suicide moves)
+# - don't forget to implement time constraint too
+# - take into account number of moves allowed in a game (Stop simulation at depth == number of moves allowed)
 
-# eval function using first two metrics seemed to work best (excluding opp suicide moves)
+# Left Off:
+# going to implement a depth cutoff on simulaiton since game ends after 24 moves -> how to determine the number of moves completed on a board?
