@@ -41,6 +41,7 @@ class MonteCarloTreeSearch:
             return leaf_node
         
         leaf_node.simulated = False
+        leaf_node.children = []
         possible_next_boards = self._generate_valid_boards(leaf_node.player, leaf_node.board, leaf_node.previous_board)
         next_player = 3 - leaf_node.player
         
@@ -59,12 +60,15 @@ class MonteCarloTreeSearch:
     def simulation(self, starting_node):
         current_node = starting_node
         starting_node.simulated = True
-        
+        depth = 0
+        estimated_moves_remaining = self._estimate_remaining_moves(current_node.board)
+        #print(f"Estimated moves remaining: {estimated_moves_remaining}")
         
         while True:
             valid_boards = self._generate_valid_boards(current_node.player, current_node.board, current_node.previous_board)
             
-            if valid_boards == []:
+            if valid_boards == [] or depth == estimated_moves_remaining:
+                #print(f"Moves made during simulaiton: {depth}\n")
                 return current_node, self._has_root_player_won(current_node.board)
             
             random_board = random.choice(valid_boards) # instead of generating random board, generate random moves (higher cost to store boards)
@@ -73,6 +77,7 @@ class MonteCarloTreeSearch:
             new_child = self._Node(next_player, random_board, current_node.board, current_node)
             current_node.children.append(new_child)
             current_node = new_child
+            depth += 1
 
     # backpropagates result of simulation, updating each node on path
     # input: node at end of simulation, boolean indicating if root player won
@@ -124,6 +129,41 @@ class MonteCarloTreeSearch:
     def write_output(self, move_played):
         with open('output.txt', 'w') as file:
             file.write(f"{move_played[0]},{move_played[1]}")
+            
+    def _estimate_remaining_moves(self, board):
+        # Initialize remaining moves to 24, the maximum number of moves.
+        remaining_moves = 24
+        
+        # Count the number of stones on the board.
+        num_stones = sum(cell != 0 for row in board for cell in row)
+        
+        # Subtract the number of stones from remaining_moves.
+        remaining_moves -= num_stones
+        
+        # Initialize variable to count captured stones.
+        captured_stones = 0
+        
+        # Loop through the board to find areas where a player's stones have been captured.
+        for row in range(len(board)):
+            for col in range(len(board[0])):
+                if board[row][col] == 0:
+                    neighbors = self._get_neighbors(row, col)
+                    
+                    # If all neighboring cells contain the same player's stone, it indicates a capture.
+                    if all(board[n_row][n_col] == neighbors[0][1] for n_row, n_col in neighbors):
+                        # Count the number of liberties for the group surrounding the empty cell.
+                        liberties = self._count_liberties(board[neighbors[0][0]][neighbors[0][1]], board, neighbors[0][0], neighbors[0][1])
+                        if liberties == len(neighbors):
+                            captured_stones += 1
+        
+        # Subtract the number of captured stones from remaining_moves.
+        remaining_moves -= captured_stones
+        
+        # If remaining_moves goes negative, set it to 0.
+        if remaining_moves < 0:
+            remaining_moves = 0
+        
+        return remaining_moves
     
     # scores the given terminal board for the root player based on the number of stones and eyes of root player
     # input: board layout
@@ -329,13 +369,52 @@ def main():
     # set root node for MCTS tree
     agent_MCTS.init_tree(player, current_board, previous_board)
     
+    '''
+    # print the root node and its children
+    print("Root Node:")
+    for row in agent_MCTS._root_node.board:
+        print(row)
+    print(f"Number of children: {len(agent_MCTS._root_node.children)}\nChildren:")
+    for child in agent_MCTS._root_node.children:
+        print(f"Child {agent_MCTS._root_node.children.index(child)}:")
+        for row in child.board:
+            print(row)
+        print()
+    '''
+
     # run MCTS for 10 seconds
     end_time = time.time() + 10
     while time.time() < end_time:
         leaf_node = agent_MCTS.selection()
+        '''
+        print("Leaf node selected during selection phase:")
+        for row in leaf_node.board:
+            print(row)
+        
+        print("Leaf node's previous board:")
+        for row in leaf_node.previous_board:
+            print(row)
+        '''
+        #print(f"Number of children: {len(leaf_node.children)}\nValue: {leaf_node.value}\nSimulated: {leaf_node.simulated}\nNumber of simulation visits: {leaf_node.simulation_visits}\nWinning simulation visits: {leaf_node.winning_simulation_visits}\n")
+        
         child_node = agent_MCTS.expansion(leaf_node)
+        #print(f"Number of Children of leaf node after expansion: {len(leaf_node.children)}\n")
+        #print("Child node selected during expansion phase:")
+        #for row in child_node.board:
+            #print(row)
+        '''
+        print("Leaf node's previous board:")
+        for row in child_node.previous_board:
+            print(row)
+        '''
+        #print(f"Number of children: {len(child_node.children)}\nValue: {child_node.value}\nSimulated: {child_node.simulated}\nNumber of simulation visits: {child_node.simulation_visits}\nWinning simulation visits: {child_node.winning_simulation_visits}\n")
         
         ending_node, root_player_won = agent_MCTS.simulation(child_node)
+        #print("Ending node of simulation:")
+        #for row in ending_node.board:
+            #print(row)
+        #print()
+    
         agent_MCTS.backpropagation(ending_node, root_player_won)
             
     # find child of root with highest number of visits
@@ -361,3 +440,4 @@ if __name__ == "__main__":
 
 # Left Off:
 # going to implement a depth cutoff on simulaiton since game ends after 24 moves -> how to determine the number of moves completed on a board?
+# finish testing if current moves remaining funciton works
