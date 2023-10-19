@@ -431,18 +431,39 @@ class MonteCarloTreeSearch:
         return uct_value
 
 def main():
+    start_time = time.time()
+    #num_stable_iterations = 0
+    #stopping_iterations = 5
+    max_time = 7.5
+    #epsilon = 0.01
+    #prev_highest_uct = float('-inf')
     agent_MCTS = MonteCarloTreeSearch("./input.txt")
     player, current_board, previous_board = agent_MCTS.read_input()
     agent_MCTS.init_tree(player, current_board, previous_board)
-    end_time = time.time() + 10
     
-    while time.time() < end_time:
+    while time.time() - start_time < max_time:
         leaf_node = agent_MCTS.selection()        
         child_node = agent_MCTS.expansion(leaf_node)        
         ending_node, root_player_won = agent_MCTS.simulation(child_node)
         agent_MCTS.backpropagation(ending_node, root_player_won)
-            
-    child = max(agent_MCTS._root_node.children, key=lambda child: child.value)
+        
+        #highest_uct = max(agent_MCTS._root_node.children, key=lambda child: agent_MCTS._UCT(child, log_parent_visits))
+        
+        #if abs(highest_uct - prev_highest_uct) < epsilon:
+            #num_stable_iterations += 1
+            #if num_stable_iterations >= stopping_iterations:
+                #print("Stopping criterion met.")
+                #break
+        #else:
+            #num_stable_iterations = 0
+        #prev_highest_uct = highest_uct
+        
+    # print the 'value' of each child of root
+    for child in agent_MCTS._root_node.children: 
+        print(f"Child Number: {agent_MCTS._root_node.children.index(child)}")
+        print(f"Value: {child.value}, Visits: {child.simulation_visits}, Final Score: {child.value / child.simulation_visits}\n")  
+    
+    child = max(agent_MCTS._root_node.children, key=lambda child: child.value / (child.simulation_visits if child.simulation_visits != 0 else 1))
     move_played = agent_MCTS._position_played(player, child.board, current_board)
     agent_MCTS.write_output(move_played)
     
@@ -458,6 +479,7 @@ if __name__ == "__main__":
 # - handle if input has 'PASS'
 # - number of eyes is important
 # - verify all funcitons work correctly
+# - playing as black -> have to capture to win
 
 # Left Off:
 # going to implement a depth cutoff on simulaiton since game ends after 24 moves -> how to determine the number of moves completed on a board?
