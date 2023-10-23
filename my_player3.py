@@ -9,6 +9,7 @@ class MonteCarloTreeSearch:
             self.parent_node = parent_node
             self.children = []
             self.value = 0
+            self.move_score = 0
             self.simulated = simulated
             self.simulation_visits = 0
             self.winning_simulation_visits = 0
@@ -16,9 +17,6 @@ class MonteCarloTreeSearch:
     def __init__(self, input_file_path):
         self._input_file_path = input_file_path
         self._root_node = None
-        #self.time_limit = time_limit
-        #self.quality_threshold = quality_threshold
-        #self.start_time = 0 
         
     # selects a leaf node to expand
     # input: None
@@ -46,6 +44,7 @@ class MonteCarloTreeSearch:
         
         for board in possible_next_boards:
             child_node = self._Node(next_player, board, leaf_node.board, leaf_node)
+            child_node.move_score = self._evaluate_move(leaf_node.board, board, leaf_node.player)
             leaf_node.children.append(child_node)
         
         if leaf_node.children == []:
@@ -59,22 +58,29 @@ class MonteCarloTreeSearch:
     def simulation(self, starting_node):
         current_node = starting_node
         starting_node.simulated = True
-        depth = 0
-        estimated_moves_remaining = self._estimate_remaining_moves(current_node.board)
+        #depth = 0
+        #estimated_moves_remaining = self._estimate_remaining_moves(current_node.board)
         
         while True:
             valid_boards = self._generate_valid_boards(current_node.player, current_node.board, current_node.previous_board)
             
-            if valid_boards == [] or depth == estimated_moves_remaining:
+            # depth == estimated_moves_remaining
+            if valid_boards == []:
                 return current_node, self._has_root_player_won(current_node.board)
             
-            random_board = random.choice(valid_boards) # instead of generating random board, generate random moves (higher cost to store boards)
+            best_score = float('-inf')
+            best_board = None
+            for board in valid_boards:
+                score = self._evaluate_move(current_node.board, board, current_node.player)
+                if score > best_score:
+                    best_score = score
+                    best_board = board
+                
             next_player = 3 - current_node.player
-            
-            new_child = self._Node(next_player, random_board, current_node.board, current_node)
+            new_child = self._Node(next_player, best_board, current_node.board, current_node)
             current_node.children.append(new_child)
             current_node = new_child
-            depth += 1
+            #depth += 1
 
     # backpropagates result of simulation, updating each node on path
     # input: node at end of simulation, boolean indicating if root player won
@@ -100,12 +106,29 @@ class MonteCarloTreeSearch:
     # Output none
     def init_tree(self, player, current_board, previous_board):
         self._root_node = self._Node(player, current_board, previous_board)
+        print('Current Board:')
+        for row in self._root_node.board:
+            print(row)
+        print("")
         possible_next_boards = self._generate_valid_boards(player, current_board, previous_board)
         next_player = 3 - player
         
         for board in possible_next_boards:
             child_node = self._Node(next_player, board, self._root_node.board, self._root_node)
+            child_node.move_score = self._evaluate_move(current_board, board, player)
             self._root_node.children.append(child_node)
+            
+        print("Root Node's Board:")
+        for row in self._root_node.board:
+            print(row)
+        print("")
+        
+        for child in self._root_node.children:
+            print(f"Child Number: {self._root_node.children.index(child)}")
+            for row in child.board:
+                print(row)
+            print(f"Position played: {self._position_played(player, child.board, self._root_node.board)}")
+            print("")
     
     # reads & parses input file
     # input: None
@@ -127,6 +150,102 @@ class MonteCarloTreeSearch:
         with open('output.txt', 'w') as file:
             file.write(f"{move_played[0]},{move_played[1]}")
 
+    # evaluates the quality of a move for a player
+    # input: current board layout, next board layout, player
+    # output: score of move for player
+    def _evaluate_move(self, current_board, next_board, player):
+        score = 0
+        capture_score = 0
+        liberty_score = 0
+        blocking_score = 0
+        territorial_gain = 0
+        
+        #("Move Evaluation funcitons being called\n")
+        # normalize scores from each function
+        capture_score = self._capture_score(current_board, next_board, player)
+        #print(f"Capture score: {capture_score}\n")
+        liberty_score = self._liberty_score(current_board, next_board, player)
+        #print(f"Liberty score: {liberty_score}\n")
+        blocking_score = self._blocking_score(current_board, next_board, player)
+        #print(f"Blocking score: {blocking_score}\n")
+        territorial_gain = self._territorial_gain(current_board, next_board, player) 
+        #print(f"Territorial gain: {territorial_gain}\n")
+        score = capture_score + liberty_score + blocking_score + territorial_gain
+        #print(f"Total Score: {score}\n")
+ 
+        return score
+    
+    # scores the given board based on the number of stones captured by the player
+    # input: current board layout, next board layout, player
+    # output: score of board for player
+    def _capture_score(self, current_board, next_board, player):
+        captured_stones = 0
+        for x in range(5):
+            for y in range(5):
+                if current_board[x][y] == 3 - player and next_board[x][y] == 0:
+                    captured_stones += 1
+        return captured_stones
+    
+    # calculates the total number of liberties for the given player
+    # input: board layout, player
+    # output: total number of liberties for player
+    def _calculate_liberties(self, board, player):
+        total_liberties = 0
+        for row in range(5):
+            for col in range(5):
+                if board[row][col] == player:
+                    total_liberties += self._count_liberties(player, board, row, col)
+        return total_liberties
+
+    # scores the boards based on the number of liberties gained by the player
+    # input: current board layout, next board layout, player
+    # output: difference in liberties gained by player
+    def _liberty_score(self, current_board, next_board, player):
+        current_liberties = self._calculate_liberties(current_board, player)
+        next_liberties = self._calculate_liberties(next_board, player)
+        return next_liberties - current_liberties
+    
+    # scores the boards based on the number of liberties lost by the opponent
+    # input: current board layout, next board layout, player
+    # output: difference in liberties lost by opponent
+    def _blocking_score(self, current_board, next_board, player):
+        opponent = 3 - player
+        current_opponent_liberties = self._calculate_liberties(current_board, opponent)
+        next_opponent_liberties = self._calculate_liberties(next_board, opponent)
+        return current_opponent_liberties - next_opponent_liberties
+    
+    # determines how a move helps secure or extend the player's influence over certain areas of the board
+    # input: current board layout, next board layout, player
+    # output: difference in territory gained by player
+    def _territorial_gain(self, current_board, next_board, player):
+        opponent = 3 - player
+    
+        initial_territory = self._count_potential_territory(current_board, player)
+        new_territory = self._count_potential_territory(next_board, player)
+        
+        initial_opponent_territory = self._count_potential_territory(current_board, opponent)
+        new_opponent_territory = self._count_potential_territory(next_board, opponent)
+        
+        territorial_difference = (new_territory - initial_territory) - (new_opponent_territory - initial_opponent_territory)
+        
+        return territorial_difference
+    
+    # counts the number of potential territories for the given player
+    # input: board layout, player
+    # output: number of potential territories for player
+    def _count_potential_territory(self, board, player):
+        territory_count = 0
+        for row in range(5):
+            for col in range(5):
+                if board[row][col] == 0:
+                    neighbors = self._get_neighbors(row, col)
+                    if all(board[n_row][n_col] == player for n_row, n_col in neighbors):
+                        territory_count += 1
+                    else:
+                        break
+        return territory_count
+        
+    
     # estimates the number of moves remaining in the game
     # input: board layout
     # output: estimated number of moves remaining
@@ -164,20 +283,17 @@ class MonteCarloTreeSearch:
         opponent = 3 - root_player
         #komi_value = 2.5
         
-        # count the number of root player's stones on the board (highest weight)
         root_player_stones = sum(row.count(root_player) for row in ending_node.board)        
-        # factor in the root player's stone groups with high liberties to ensure they are not easily captured in future turns
         groups_with_high_liberties = self._defensive_structures(ending_node.board, root_player)
-        # potential suicides for spponent: While a bit more situational, recognizing areas where the opponent might be forced into bad moves could also be advantageous.
         if self._check_equal_pieces(ending_node.board):
             score += self._count_potential_suicides(ending_node.board, opponent)
-        # determine number of spaces captured by root player
         captured_spaces = self._count_captured_spaces(ending_node.board, root_player)
         #score += self._count_eyes(ending_node.board, root_player) * 2
         
         score += root_player_stones
         score += groups_with_high_liberties
         score += captured_spaces
+        
         return score
     
     # counts the number of spaces captured by the given player
@@ -420,23 +536,25 @@ class MonteCarloTreeSearch:
     # input: node to calculate UCT value for, logarithm of parent visits
     # output: UCT value of node
     def _UCT(self, node, log_parent_visits):
-        C = 2
+        C = 0.1
         n_i = node.simulation_visits
+        move_score = node.move_score
         
         if n_i == 0:
             return float('inf')
         
         w_i = node.winning_simulation_visits
-        uct_value = (w_i / n_i) + C * math.sqrt(log_parent_visits / n_i)
+        uct_value = (w_i / n_i) + C * math.sqrt(log_parent_visits / n_i) + move_score
         return uct_value
 
 def main():
     start_time = time.time()
-    #num_stable_iterations = 0
-    #stopping_iterations = 5
+    num_stable_iterations = 0
+    stopping_iterations = 50
     max_time = 7.5
-    #epsilon = 0.01
-    #prev_highest_uct = float('-inf')
+    epsilon = 0.01
+    confidence_interval = 0.05
+    prev_highest_uct = float('-inf')
     agent_MCTS = MonteCarloTreeSearch("./input.txt")
     player, current_board, previous_board = agent_MCTS.read_input()
     agent_MCTS.init_tree(player, current_board, previous_board)
@@ -447,23 +565,37 @@ def main():
         ending_node, root_player_won = agent_MCTS.simulation(child_node)
         agent_MCTS.backpropagation(ending_node, root_player_won)
         
-        #highest_uct = max(agent_MCTS._root_node.children, key=lambda child: agent_MCTS._UCT(child, log_parent_visits))
+        log_parent_visits = math.log(agent_MCTS._root_node.simulation_visits) if agent_MCTS._root_node.simulation_visits else 1.0
+        child_node_highest_uct, highest_uct = max(
+            ((child, agent_MCTS._UCT(child, log_parent_visits)) for child in agent_MCTS._root_node.children),
+            key=lambda x: x[1]
+        )        
         
-        #if abs(highest_uct - prev_highest_uct) < epsilon:
-            #num_stable_iterations += 1
-            #if num_stable_iterations >= stopping_iterations:
-                #print("Stopping criterion met.")
-                #break
-        #else:
-            #num_stable_iterations = 0
-        #prev_highest_uct = highest_uct
+        if abs(highest_uct - prev_highest_uct) < epsilon:
+            num_stable_iterations += 1
+            if num_stable_iterations >= stopping_iterations:
+                if child_node_highest_uct.simulation_visits > 0:
+                    inside_sqrt = (highest_uct * (1 - highest_uct)) / child_node_highest_uct.simulation_visits
+                    if inside_sqrt >= 0:
+                        confidence = 1.96 * math.sqrt(inside_sqrt)
+                        if confidence < confidence_interval:
+                            #print(f"Stopping early: Value is stable and confidence interval is narrow. Time Taken: {time.time() - start_time}")
+                            break
+        else:
+            num_stable_iterations = 0
+            
+        prev_highest_uct = highest_uct
         
     # print the 'value' of each child of root
-    for child in agent_MCTS._root_node.children: 
-        print(f"Child Number: {agent_MCTS._root_node.children.index(child)}")
-        print(f"Value: {child.value}, Visits: {child.simulation_visits}, Final Score: {child.value / child.simulation_visits}\n")  
+    #for child in agent_MCTS._root_node.children: 
+        #print(f"Child Number: {agent_MCTS._root_node.children.index(child)}")
+        #print(f"Visits: {child.simulation_visits}, Number winning visits: {child.winning_simulation_visits}, Win rate: {child.winning_simulation_visits / child.simulation_visits if child.simulation_visits > 0 and child.winning_simulation_visits > 0 else 0}\n")  
     
-    child = max(agent_MCTS._root_node.children, key=lambda child: child.value / (child.simulation_visits if child.simulation_visits != 0 else 1))
+    child = max(
+        agent_MCTS._root_node.children, 
+        key=lambda child: (child.value + child.winning_simulation_visits / (child.simulation_visits if child.simulation_visits != 0 else 1)) + child.move_score
+    )    
+    #print(f"Child Chosen Number: {agent_MCTS._root_node.children.index(child)}")
     move_played = agent_MCTS._position_played(player, child.board, current_board)
     agent_MCTS.write_output(move_played)
     
@@ -480,8 +612,13 @@ if __name__ == "__main__":
 # - number of eyes is important
 # - verify all funcitons work correctly
 # - playing as black -> have to capture to win
+# - potentially normalize scores in eval functions
+# - playing as white -> main obj is to defend pieces / black -> capture pieces
 
 # Left Off:
 # going to implement a depth cutoff on simulaiton since game ends after 24 moves -> how to determine the number of moves completed on a board?
 # finish testing if current moves remaining funciton works
 # just finished redoing eval funciton, about to test (seems no depth cutoff worked best)
+# look into why values are 0 in early stopping check
+# optimize code to run faster
+# recalibrate time limit and early stopping
