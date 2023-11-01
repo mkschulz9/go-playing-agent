@@ -122,6 +122,27 @@ class MonteCarloTreeSearch:
                 break
             
             current_node = current_node.parent_node
+            
+    # updates player one weights to play more aggressively
+    # input: None
+    # output: None (modifies weights in-place)
+    def update_player_1_weights(self):
+        for index in range(1, len(self.settings['weights_move']) + 1):
+            for key, multiplier in self.settings['move_multipliers'].items():
+                self.settings['weights_move'][index][key] *= multiplier
+
+        for index in range(1, len(self.settings['weights_board']) + 1):
+            for key, multiplier in self.settings['board_multipliers'].items():
+                self.settings['weights_board'][index][key] *= multiplier
+    
+    # calculates a root child's ending value
+    # input: child node, game stage
+    # output: value of child node
+    def calc_child_value(self, child, game_stage):
+        alpha, beta = self.settings['weights_final_move'][game_stage]
+        win_sim_ratio, value_sim_ratio = calculate_ratios(alpha, beta, child)
+        
+        return win_sim_ratio + value_sim_ratio
     
     # calculates UCT value for a given node
     # input: node to calculate UCT value for, logarithm of parent visits
@@ -191,24 +212,3 @@ class MonteCarloTreeSearch:
         }
 
         return sum(normalized_scores[key] * stage_weights[key] for key in normalized_scores)
-    
-    # updates player one weights to play more aggressively
-    # input: None
-    # output: None (modifies weights in-place)
-    def update_player_1_weights(self):
-        for index in range(1, len(self.settings['weights_move']) + 1):
-            for key, multiplier in self.settings['move_multipliers'].items():
-                self.settings['weights_move'][index][key] *= multiplier
-
-        for index in range(1, len(self.settings['weights_board']) + 1):
-            for key, multiplier in self.settings['board_multipliers'].items():
-                self.settings['weights_board'][index][key] *= multiplier
-    
-    # calculates a root child's ending value
-    # input: child node, game stage
-    # output: value of child node
-    def calc_child_value(self, child, game_stage):
-        alpha, beta = self.settings['weights_final_move'][game_stage]
-        win_sim_ratio, value_sim_ratio = calculate_ratios(alpha, beta, child)
-        
-        return win_sim_ratio + value_sim_ratio
