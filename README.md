@@ -2,7 +2,7 @@
 
 ## Assignment #2: 5x5 Go Playing Agent
 
-Welcome to the repository for Assignment #2 for CSCI-561, USC's Foundations of Artificial Intelligence graduate course. This project implements a 5x5 Go playing agent using a modified Monte Carlo Tree Search algorithm.
+Welcome to the repository for Assignment #2 for CSCI-561, USC's Foundations of Artificial Intelligence graduate course. This project implements a 5x5 Go playing agent using a modified Monte Carlo Tree Search Algorithm.
 
 ---
 
